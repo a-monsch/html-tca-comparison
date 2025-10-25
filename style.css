@@ -1,0 +1,167 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f4f4;
+}
+
+.controls {
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.btn {
+    padding: 10px 15px;
+    cursor: pointer;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    border-radius: 5px;
+    margin-right: 10px;
+}
+
+.checkbox-container {
+    margin-left: 15px;
+    display: flex;
+    align-items: center;
+}
+
+#columns-container {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding-bottom: 20px;
+}
+
+.column {
+    flex: 1;
+    min-width: 280px;
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.column-header {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    position: relative;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 1.2em;
+    color: #888;
+    cursor: pointer;
+    padding: 0 5px;
+    line-height: 1;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.close-btn:hover {
+    color: #333;
+}
+
+.table-container {
+    overflow: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    white-space: nowrap;
+}
+
+th {
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    background-color: #f9f9f9;
+}
+
+/* --- Highlighting Styles --- */
+
+/* Palette of highlight colors for aggregate mode */
+.highlight-color-0 { background-color: #ffdd57 !important; } /* Yellow */
+.highlight-color-1 { background-color: #a0e6ff !important; } /* Blue */
+.highlight-color-2 { background-color: #ff9f9f !important; } /* Red */
+.highlight-color-3 { background-color: #a0ffb3 !important; } /* Green */
+.highlight-color-4 { background-color: #d7a0ff !important; } /* Purple */
+.highlight-color-5 { background-color: #ffbe8a !important; } /* Orange */
+.highlight-color-6 { background-color: #90caf9 !important; } /* Light Blue */
+.highlight-color-7 { background-color: #f48fb1 !important; } /* Pink */
+.highlight-color-8 { background-color: #c5e1a5 !important; } /* Light Green */
+.highlight-color-9 { background-color: #ffe082 !important; } /* Light Yellow */ 
+.highlight-color-10 { background-color: #ffccbc !important; } /* Light Coral */
+.highlight-color-11 { background-color: #b39ddb !important; } /* Light Purple */
+
+/* Row highlight should be distinct and override others */
+.highlight-row {
+    background-color: #e0e0e0 !important; /* Gray */
+}
+
+.value-cell {
+    /* Remove padding from the cell itself to allow the bar full control */
+    padding: 0 !important;
+}
+
+.bar-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    /* Restore the padding inside the container */
+    padding: 8px;
+    height: 100%;
+}
+
+.bar-plot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background-color: #d1e7dd; /* A light, pleasant green */
+    z-index: 1; /* Puts the bar behind the text */
+    transition: width 0.3s ease-in-out; /* Smooth animation on rescale */
+}
+
+.bar-text {
+    position: relative;
+    z-index: 2; /* Puts the text in front of the bar */
+    white-space: nowrap; /* Ensures scientific notation doesn't wrap */
+}
+
+/* New styles for custom header and selects */
+.custom-header {
+    font-weight: bold;
+    font-size: 1.2em;
+    margin-bottom: 10px;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.select-container {
+    display: flex;
+    gap: 10px;
+}
+
+.class-select, .scaling-select, .mode-select {
+    flex: 1;
+}

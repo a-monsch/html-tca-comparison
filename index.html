@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Data Visualizer</title>
+    <!-- Link to the external CSS file -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- MathJax CDN for LaTeX rendering -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        // MathJax configuration
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+</head>
+<body>
+
+    <!-- Controls section -->
+    <div class="controls">
+        <button class="btn" onclick="addColumn()">Add Column</button>
+        <button class="btn" onclick="generatePermalink()">Create Permalink</button>
+        <!-- Checkbox for the new aggregate highlight feature -->
+        <div class="checkbox-container">
+            <input type="checkbox" id="aggregate-checkbox" onchange="handleAggregateToggle(this.checked)">
+            <label for="aggregate-checkbox">Aggregate Highlight</label>
+        </div>
+    </div>
+
+    <!-- Container where the data columns will be dynamically added -->
+    <div id="columns-container"></div>
+
+    <!-- Link to the external JavaScript file -->
+    <script src="script.js"></script>
+</body>
+</html>
