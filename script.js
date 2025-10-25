@@ -51,12 +51,122 @@ let nextColumnId = 0;
 let highlightedVars = new Map();
 let globalMaxValue = 0;
 
+// --- HELPER FUNCTIONS ---
+
+function escapeJS(str) {
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function filterScalingForClass(className, scaling) {
+    if (className.includes('(binary)')) {
+        return scaling.includes('Binary');
+    } else {
+        return scaling.includes('Multiclass');
+    }
+}
+
+function getFolderStructure() {
+    const structure = {};
+    classList.forEach(c => {
+        structure[c] = {};
+        scalingList.forEach(s => {
+            if (filterScalingForClass(c, s)) {
+                structure[c][s] = modeList;
+            }
+        });
+    });
+    return structure;
+}
+
+function buildNestedMenu(columnId) {
+    const structure = getFolderStructure();
+    return `<ul class="menu-level-1">
+        ${Object.keys(structure).map(c => {
+            return `<li><span title="${c}">${c}</span>
+                <ul class="menu-level-2">
+                    ${Object.keys(structure[c]).map(s => {
+                        return `<li><span title="${s}">${s}</span>
+                            <ul class="menu-level-3">
+                                ${structure[c][s].map(m => {
+                                    return `<li><span title="${m}">${m}</span>
+                                        <ul class="menu-level-4">
+                                            <li title="${c}/${s}/${m}/${c}.csv" onclick="selectConfig('${columnId}', '${escapeJS(c)}', '${escapeJS(s)}', '${escapeJS(m)}')">${c}.csv</li>
+                                        </ul>
+                                    </li>`;
+                                }).join('')}
+                            </ul>
+                        </li>`;
+                    }).join('')}
+                </ul>
+            </li>`;
+        }).join('')}
+    </ul>`;
+}
+
+function toggleMenu(button, level = 1) {
+    const dropdown = button.nextElementSibling;
+    const isOpen = dropdown.style.display === 'block';
+    if (isOpen) {
+        closeAllMenus(button.closest('.nested-dropdown'));
+    } else {
+        closeAllMenus(button.closest('.nested-dropdown'));
+        const rect = button.getBoundingClientRect();
+        dropdown.style.position = 'fixed';
+        dropdown.style.top = `${rect.bottom}px`;
+        dropdown.style.left = `${rect.left}px`;
+        dropdown.style.display = 'block';
+    }
+}
+
+function toggleSubMenu(span, level) {
+    const li = span.parentElement;
+    const submenu = li.querySelector(`.menu-level-${level + 1}`);
+    if (!submenu) return;
+    const isActive = li.classList.contains('active');
+    closeAllSubMenus(li.closest(`.menu-level-${level}`));
+    if (!isActive) {
+        const rect = span.getBoundingClientRect();
+        submenu.style.position = 'fixed';
+        submenu.style.top = `${rect.top}px`;
+        submenu.style.left = `${rect.right + 5}px`; // Small offset for clarity
+        submenu.style.display = 'block';
+        li.classList.add('active');
+        // Adjust position to stay within viewport
+        const submenuRect = submenu.getBoundingClientRect();
+        if (submenuRect.right > window.innerWidth) {
+            submenu.style.left = `${rect.left - submenuRect.width - 5}px`;
+        }
+        if (submenuRect.bottom > window.innerHeight) {
+            submenu.style.top = `${window.innerHeight - submenuRect.height}px`;
+        }
+    }
+}
+
+function closeAllMenus(nestedDropdown) {
+    nestedDropdown.querySelectorAll('.dropdown-content, .menu-level-2, .menu-level-3, .menu-level-4').forEach(menu => {
+        menu.style.display = 'none';
+        menu.style.position = '';
+        menu.style.top = '';
+        menu.style.left = '';
+    });
+    nestedDropdown.querySelectorAll('li.active').forEach(li => li.classList.remove('active'));
+}
+
+function closeAllSubMenus(menu) {
+    menu.querySelectorAll('li.active').forEach(li => {
+        li.classList.remove('active');
+        const submenu = li.querySelector('ul');
+        if (submenu) {
+            submenu.style.display = 'none';
+            submenu.style.position = '';
+            submenu.style.top = '';
+            submenu.style.left = '';
+        }
+    });
+}
+
 // --- CORE LOGIC ---
 
-/**
- * Calculates the global maximum value from all loaded data,
- * then triggers a re-render of all visible columns.
- */
 function recalculateAndRedrawAll() {
     let maxVal = 0;
     Object.values(columnsState).forEach(state => {
@@ -72,7 +182,6 @@ function recalculateAndRedrawAll() {
     });
     globalMaxValue = maxVal;
 
-    // Re-render all tables with the new correct scale
     Object.keys(columnsState).forEach(columnId => {
         if (columnsState[columnId].className && columnsState[columnId].scaling && columnsState[columnId].mode) {
             renderTable(columnId);
@@ -80,10 +189,6 @@ function recalculateAndRedrawAll() {
     });
 }
 
-/**
- * Just fetches and stores data for a given column. Does NOT render.
- * @returns {Promise<void>}
- */
 async function loadDataForColumn(className, scaling, mode, columnId) {
     try {
         const path = `data/${encodeURIComponent(className)}/${encodeURIComponent(scaling)}/${encodeURIComponent(mode)}/${encodeURIComponent(className)}.csv`;
@@ -94,7 +199,7 @@ async function loadDataForColumn(className, scaling, mode, columnId) {
         columnsState[columnId].data = rows;
     } catch (error) {
         console.error(`Error loading data for ${className}/${scaling}/${mode}:`, error);
-        columnsState[columnId].data = []; // Ensure data is empty on failure
+        columnsState[columnId].data = [];
     }
 }
 
@@ -104,9 +209,6 @@ function handleAggregateToggle(isChecked) {
     if (!isChecked) clearHighlights();
 }
 
-/**
- * Adds a new, empty column when the user clicks the "Add Column" button.
- */
 function addColumn() {
     const columnId = `col-${nextColumnId++}`;
     const columnEl = document.createElement('div');
@@ -116,42 +218,42 @@ function addColumn() {
         <div class="column-header">
             <input type="text" class="custom-header" placeholder="Custom label" oninput="onCustomHeader(this.value, '${columnId}')">
             <div class="select-container">
-                <select class="class-select" onchange="onClassSelect(this.value, '${columnId}')">
-                    <option value="">Select class</option>
-                    ${classList.map(c => `<option value="${c}">${c}</option>`).join('')}
-                </select>
-                <select class="scaling-select" onchange="onScalingSelect(this.value, '${columnId}')">
-                    <option value="">Select scaling</option>
-                    ${scalingList.map(s => `<option value="${s}">${s}</option>`).join('')}
-                </select>
-                <select class="mode-select" onchange="onModeSelect(this.value, '${columnId}')">
-                    <option value="">Select mode</option>
-                    ${modeList.map(m => `<option value="${m}">${m}</option>`).join('')}
-                </select>
+                <div class="nested-dropdown">
+                    <button class="dropbtn">Select Configuration</button>
+                    <div class="dropdown-content">
+                        ${buildNestedMenu(columnId)}
+                    </div>
+                </div>
             </div>
             <button class="close-btn" onclick="closeColumn('${columnId}')">&times;</button>
         </div>
         <div class="table-container"></div>`;
     document.getElementById('columns-container').appendChild(columnEl);
     columnsState[columnId] = { className: null, scaling: null, mode: null, customHeader: '', data: [], sort: {} };
+    const button = columnEl.querySelector('.dropbtn');
+    button.addEventListener('click', () => toggleMenu(button));
+    const spans = columnEl.querySelectorAll('.menu-level-1 > li > span, .menu-level-2 > li > span, .menu-level-3 > li > span');
+    spans.forEach(span => {
+        span.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const level = parseInt(span.closest('ul').className.match(/menu-level-(\d)/)[1]);
+            toggleSubMenu(span, level);
+        });
+    });
 }
 
 function onCustomHeader(value, columnId) {
     columnsState[columnId].customHeader = value;
 }
 
-function onClassSelect(value, columnId) {
-    columnsState[columnId].className = value;
-    tryLoadData(columnId);
-}
-
-function onScalingSelect(value, columnId) {
-    columnsState[columnId].scaling = value;
-    tryLoadData(columnId);
-}
-
-function onModeSelect(value, columnId) {
-    columnsState[columnId].mode = value;
+function selectConfig(columnId, className, scaling, mode) {
+    columnsState[columnId].className = className;
+    columnsState[columnId].scaling = scaling;
+    columnsState[columnId].mode = mode;
+    const button = document.querySelector(`.column[data-column-id='${columnId}'] .dropbtn`);
+    button.textContent = className;
+    button.title = `${className}/${scaling}/${mode}`;
+    closeAllMenus(button.closest('.nested-dropdown'));
     tryLoadData(columnId);
 }
 
@@ -190,7 +292,7 @@ async function renderTable(columnId) {
         return;
     }
     const header = data[0];
-    let bodyRows = [...data.slice(1)]; // Create a copy for sorting
+    let bodyRows = [...data.slice(1)];
 
     if (sort && sort.by !== undefined) {
         bodyRows.sort((a, b) => {
@@ -277,7 +379,7 @@ function sortColumn(columnId, sortBy) {
     let order = 'asc';
     if (currentSort.by === sortBy && currentSort.order === 'asc') order = 'desc';
     columnsState[columnId].sort = { by: sortBy, order };
-    renderTable(columnId); // Re-render this one column
+    renderTable(columnId);
 }
 
 // --- HIGHLIGHTING & PERMALINK ---
@@ -309,9 +411,9 @@ function highlightVariable(variableToMatch) {
                     td.classList.add(HIGHLIGHT_COLORS[colorIndex]);
                 } else {
                     highlightedVars.forEach((colorIndex, key) => {
-                         if(key === variable){
+                        if (key === variable) {
                             td.classList.remove(HIGHLIGHT_COLORS[colorIndex]);
-                         }
+                        }
                     });
                 }
             }
@@ -396,18 +498,12 @@ async function loadFromPermalink() {
                     <div class="column-header">
                         <input type="text" class="custom-header" placeholder="Custom label" value="${colState.customHeader || ''}" oninput="onCustomHeader(this.value, '${columnId}')">
                         <div class="select-container">
-                            <select class="class-select" onchange="onClassSelect(this.value, '${columnId}')">
-                                <option value="">Select class</option>
-                                ${classList.map(c => `<option value="${c}" ${c === colState.className ? 'selected' : ''}>${c}</option>`).join('')}
-                            </select>
-                            <select class="scaling-select" onchange="onScalingSelect(this.value, '${columnId}')">
-                                <option value="">Select scaling</option>
-                                ${scalingList.map(s => `<option value="${s}" ${s === colState.scaling ? 'selected' : ''}>${s}</option>`).join('')}
-                            </select>
-                            <select class="mode-select" onchange="onModeSelect(this.value, '${columnId}')">
-                                <option value="">Select mode</option>
-                                ${modeList.map(m => `<option value="${m}" ${m === colState.mode ? 'selected' : ''}>${m}</option>`).join('')}
-                            </select>
+                            <div class="nested-dropdown">
+                                <button class="dropbtn">Select Configuration</button>
+                                <div class="dropdown-content">
+                                    ${buildNestedMenu(columnId)}
+                                </div>
+                            </div>
                         </div>
                         <button class="close-btn" onclick="closeColumn('${columnId}')">&times;</button>
                     </div>
@@ -423,6 +519,22 @@ async function loadFromPermalink() {
                     sort: colState.sort || {} 
                 };
                 
+                const button = columnEl.querySelector('.dropbtn');
+                button.addEventListener('click', () => toggleMenu(button));
+                const spans = columnEl.querySelectorAll('.menu-level-1 > li > span, .menu-level-2 > li > span, .menu-level-3 > li > span');
+                spans.forEach(span => {
+                    span.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const level = parseInt(span.closest('ul').className.match(/menu-level-(\d)/)[1]);
+                        toggleSubMenu(span, level);
+                    });
+                });
+
+                if (colState.className && colState.scaling && colState.mode) {
+                    button.textContent = colState.className;
+                    button.title = `${colState.className}/${colState.scaling}/${colState.mode}`;
+                }
+                
                 return tryLoadData(columnId);
             });
 
@@ -430,7 +542,7 @@ async function loadFromPermalink() {
         }
     } catch (e) {
         console.error("Fatal error loading from permalink:", e);
-        window.location.hash = ''; 
+        window.location.hash = '';
     }
 }
 

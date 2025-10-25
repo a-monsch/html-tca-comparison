@@ -95,8 +95,6 @@ th {
 }
 
 /* --- Highlighting Styles --- */
-
-/* Palette of highlight colors for aggregate mode */
 .highlight-color-0 { background-color: #ffdd57 !important; } /* Yellow */
 .highlight-color-1 { background-color: #a0e6ff !important; } /* Blue */
 .highlight-color-2 { background-color: #ff9f9f !important; } /* Red */
@@ -106,7 +104,7 @@ th {
 .highlight-color-6 { background-color: #90caf9 !important; } /* Light Blue */
 .highlight-color-7 { background-color: #f48fb1 !important; } /* Pink */
 .highlight-color-8 { background-color: #c5e1a5 !important; } /* Light Green */
-.highlight-color-9 { background-color: #ffe082 !important; } /* Light Yellow */ 
+.highlight-color-9 { background-color: #ffe082 !important; } /* Light Yellow */
 .highlight-color-10 { background-color: #ffccbc !important; } /* Light Coral */
 .highlight-color-11 { background-color: #b39ddb !important; } /* Light Purple */
 
@@ -116,7 +114,6 @@ th {
 }
 
 .value-cell {
-    /* Remove padding from the cell itself to allow the bar full control */
     padding: 0 !important;
 }
 
@@ -124,7 +121,6 @@ th {
     position: relative;
     display: flex;
     align-items: center;
-    /* Restore the padding inside the container */
     padding: 8px;
     height: 100%;
 }
@@ -134,15 +130,15 @@ th {
     left: 0;
     top: 0;
     height: 100%;
-    background-color: #d1e7dd; /* A light, pleasant green */
-    z-index: 1; /* Puts the bar behind the text */
-    transition: width 0.3s ease-in-out; /* Smooth animation on rescale */
+    background-color: #d1e7dd;
+    z-index: 1;
+    transition: width 0.3s ease-in-out;
 }
 
 .bar-text {
     position: relative;
-    z-index: 2; /* Puts the text in front of the bar */
-    white-space: nowrap; /* Ensures scientific notation doesn't wrap */
+    z-index: 2;
+    white-space: nowrap;
 }
 
 /* New styles for custom header and selects */
@@ -158,10 +154,88 @@ th {
 }
 
 .select-container {
+    width: 100%;
     display: flex;
-    gap: 10px;
+    align-items: center;
 }
 
-.class-select, .scaling-select, .mode-select {
-    flex: 1;
+.nested-dropdown {
+    width: 100%;
+    position: relative;
+}
+
+.dropbtn {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dropdown-content {
+    display: none;
+    position: fixed;
+    background-color: white;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1000;
+    width: max-content;
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.menu-level-1, .menu-level-2, .menu-level-3, .menu-level-4 {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    width: max-content;
+    min-width: 150px;
+    max-width: 400px;
+}
+
+.menu-level-1 > li, .menu-level-2 > li, .menu-level-3 > li {
+    position: relative;
+}
+
+.menu-level-2, .menu-level-3, .menu-level-4 {
+    display: none;
+    position: fixed;
+    background-color: white;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1001;
+    width: max-content;
+    min-width: 150px;
+    max-width: 400px;
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.menu-level-1 > li.active > ul,
+.menu-level-2 > li.active > ul,
+.menu-level-3 > li.active > ul {
+    display: block;
+}
+
+.menu-level-1 > li > span,
+.menu-level-2 > li > span,
+.menu-level-3 > li > span,
+.menu-level-4 > li {
+    display: block;
+    padding: 8px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.menu-level-1 > li > span:hover,
+.menu-level-2 > li > span:hover,
+.menu-level-3 > li > span:hover,
+.menu-level-4 > li:hover {
+    background-color: #f1f1f1;
 }
