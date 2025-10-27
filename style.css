@@ -94,23 +94,21 @@ th {
     background-color: #f9f9f9;
 }
 
-/* --- Highlighting Styles --- */
-.highlight-color-0 { background-color: #ffdd57 !important; } /* Yellow */
-.highlight-color-1 { background-color: #a0e6ff !important; } /* Blue */
-.highlight-color-2 { background-color: #ff9f9f !important; } /* Red */
-.highlight-color-3 { background-color: #a0ffb3 !important; } /* Green */
-.highlight-color-4 { background-color: #d7a0ff !important; } /* Purple */
-.highlight-color-5 { background-color: #ffbe8a !important; } /* Orange */
-.highlight-color-6 { background-color: #90caf9 !important; } /* Light Blue */
-.highlight-color-7 { background-color: #f48fb1 !important; } /* Pink */
-.highlight-color-8 { background-color: #c5e1a5 !important; } /* Light Green */
-.highlight-color-9 { background-color: #ffe082 !important; } /* Light Yellow */
-.highlight-color-10 { background-color: #ffccbc !important; } /* Light Coral */
-.highlight-color-11 { background-color: #b39ddb !important; } /* Light Purple */
+.highlight-color-0 { background-color: #ffdd57 !important; }
+.highlight-color-1 { background-color: #a0e6ff !important; }
+.highlight-color-2 { background-color: #ff9f9f !important; }
+.highlight-color-3 { background-color: #a0ffb3 !important; }
+.highlight-color-4 { background-color: #d7a0ff !important; }
+.highlight-color-5 { background-color: #ffbe8a !important; }
+.highlight-color-6 { background-color: #90caf9 !important; }
+.highlight-color-7 { background-color: #f48fb1 !important; }
+.highlight-color-8 { background-color: #c5e1a5 !important; }
+.highlight-color-9 { background-color: #ffe082 !important; }
+.highlight-color-10 { background-color: #ffccbc !important; }
+.highlight-color-11 { background-color: #b39ddb !important; }
 
-/* Row highlight should be distinct and override others */
 .highlight-row {
-    background-color: #e0e0e0 !important; /* Gray */
+    background-color: #e0e0e0 !important;
 }
 
 .value-cell {
@@ -141,7 +139,6 @@ th {
     white-space: nowrap;
 }
 
-/* New styles for custom header and selects */
 .custom-header {
     font-weight: bold;
     font-size: 1.2em;
@@ -183,14 +180,15 @@ th {
     position: fixed;
     background-color: white;
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1000;
+    z-index: 10000; /* Increased to ensure visibility */
     width: max-content;
     max-height: 300px;
     overflow-y: auto;
     overflow-x: hidden;
+    border: 2px solid red !important; /* Debug: Make dropdown obvious */
 }
 
-.menu-level-1, .menu-level-2, .menu-level-3, .menu-level-4 {
+.dropdown-content ul {
     list-style-type: none;
     margin: 0;
     padding: 0;
@@ -199,11 +197,11 @@ th {
     max-width: 400px;
 }
 
-.menu-level-1 > li, .menu-level-2 > li, .menu-level-3 > li {
+.dropdown-content li {
     position: relative;
 }
 
-.menu-level-2, .menu-level-3, .menu-level-4 {
+.dropdown-content ul ul {
     display: none;
     position: fixed;
     background-color: white;
@@ -217,25 +215,19 @@ th {
     overflow-x: hidden;
 }
 
-.menu-level-1 > li.active > ul,
-.menu-level-2 > li.active > ul,
-.menu-level-3 > li.active > ul {
+.dropdown-content li.open > ul {
     display: block;
 }
 
-.menu-level-1 > li > span,
-.menu-level-2 > li > span,
-.menu-level-3 > li > span,
-.menu-level-4 > li {
+.dropdown-content li > span,
+.dropdown-content li > ul > li {
     display: block;
     padding: 8px 16px;
     cursor: pointer;
     white-space: nowrap;
 }
 
-.menu-level-1 > li > span:hover,
-.menu-level-2 > li > span:hover,
-.menu-level-3 > li > span:hover,
-.menu-level-4 > li:hover {
+.dropdown-content li > span:hover,
+.dropdown-content li > ul > li:hover {
     background-color: #f1f1f1;
 }

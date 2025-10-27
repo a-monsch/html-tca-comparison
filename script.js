@@ -1,41 +1,25 @@
 // --- CONFIGURATION ---
-const classList = [
-    '0+1 jets vbf - vbf (201-202)',
-    '0 jets ggh - ggh (105-106)',
-    '1 jets ggh - ggh (107-109)',
-    '2p jets high mjj - ggh (113-116)',
-    '2p jets high mjj high ptH vbf (206)',
-    '2p jets high mjj low ptH high ptHjj vbf - vbf (209-210)',
-    '2p jets high mjj low ptH low ptHjj vbf - vbf (207-208)',
-    '2p jets low mjj - ggh (110-112)',
-    '2p jets low mjj - vbf (203-205)',
-    'background (all)',
-    'diboson',
-    'dyjets',
-    'embedding',
-    'ggh (105)',
-    'ggh (106)',
-    'ggh (107)',
-    'ggh (108)',
-    'ggh (109)',
-    'ggh (all)',
-    'high ptH ggh - ggh (101-104)',
-    'jetFakes',
-    'signal (all)',
-    'ttbar',
-    'vbf (all)',
-    'all (binary)',
-];
+let folderStructure = {};
+let isFolderStructureLoaded = false;
 
-const scalingList = [
-    "m10_to_m10__Multiclass__Sigmoid",
-    "m10_to_m10__Multiclass__Softmax",
-    "m10_to_NaN__Multiclass__Sigmoid",
-    "m10_to_NaN__Multiclass__Softmax",
-    "m10_to_m10__Binary__Sigmoid",
-    "m10_to_NaN__Binary__Sigmoid",
-];
-const modeList = ["TP", "all"];
+async function initFolderStructure() {
+    try {
+        const response = await fetch('folder_structure.json');
+        if (!response.ok) throw new Error(`Failed to load folder structure: ${response.status}`);
+        folderStructure = await response.json();
+        if (Object.keys(folderStructure).length === 0) {
+            throw new Error('Folder structure is empty');
+        }
+        isFolderStructureLoaded = true;
+        document.getElementById('add-column-btn').disabled = false;
+        console.log('Folder structure loaded:', folderStructure);
+    } catch (error) {
+        console.error('Error loading folder structure:', error);
+        alert('Failed to load folder structure. Please check folder_structure.json.');
+        isFolderStructureLoaded = false;
+        document.getElementById('add-column-btn').disabled = true;
+    }
+}
 
 // Color classes from style.css for aggregate highlighting
 const HIGHLIGHT_COLORS = [
@@ -57,104 +41,121 @@ function escapeJS(str) {
     return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-function filterScalingForClass(className, scaling) {
-    if (className.includes('(binary)')) {
-        return scaling.includes('Binary');
+function getFolderStructure() {
+    return folderStructure;
+}
+
+async function buildNestedMenu(columnId) {
+    if (!isFolderStructureLoaded) {
+        console.warn('Folder structure not loaded yet');
+        return '<ul><li>Folder structure not loaded</li></ul>';
+    }
+    const structure = getFolderStructure();
+    const menuHtml = buildMenu(structure, columnId);
+    console.log('Generated menu HTML:', menuHtml);
+    return menuHtml;
+}
+
+function buildMenu(node, columnId, path = []) {
+    if (Array.isArray(node)) {
+        console.log('Building menu for files:', node, 'at path:', path);
+        return `<ul>
+            ${node.map(file => {
+                const fullPath = path.join('/');
+                return `<li title="${fullPath}/${file}" onclick="selectConfig('${columnId}', '${escapeJS(fullPath)}', '${escapeJS(file)}')">${file}</li>`;
+            }).join('')}
+        </ul>`;
+    } else if (node && node.files && Array.isArray(node.files)) {
+        console.log('Building menu for files key:', node.files, 'at path:', path);
+        return `<ul>
+            ${node.files.map(file => {
+                const fullPath = path.join('/');
+                return `<li title="${fullPath}/${file}" onclick="selectConfig('${columnId}', '${escapeJS(fullPath)}', '${escapeJS(file)}')">${file}</li>`;
+            }).join('')}
+        </ul>`;
     } else {
-        return scaling.includes('Multiclass');
+        return `<ul>
+            ${Object.keys(node).map(key => {
+                if (key === 'files') return ''; // Skip files here, handled above
+                const newPath = [...path, key];
+                // Handle incorrect JSON structure with CSV as key
+                if (Array.isArray(node[key]) && node[key].length > 0 && node[key][0].endsWith('.csv')) {
+                    console.log('Building menu for CSV key:', key, 'files:', node[key], 'at path:', path);
+                    return `<ul>
+                        ${node[key].map(file => {
+                            const fullPath = path.join('/');
+                            return `<li title="${fullPath}/${file}" onclick="selectConfig('${columnId}', '${escapeJS(fullPath)}', '${escapeJS(file)}')">${file}</li>`;
+                        }).join('')}
+                    </ul>`;
+                }
+                return `<li><span title="${key}">${key}</span>
+                    ${buildMenu(node[key], columnId, newPath)}
+                </li>`;
+            }).join('')}
+        </ul>`;
     }
 }
 
-function getFolderStructure() {
-    const structure = {};
-    classList.forEach(c => {
-        structure[c] = {};
-        scalingList.forEach(s => {
-            if (filterScalingForClass(c, s)) {
-                structure[c][s] = modeList;
-            }
-        });
-    });
-    return structure;
-}
-
-function buildNestedMenu(columnId) {
-    const structure = getFolderStructure();
-    return `<ul class="menu-level-1">
-        ${Object.keys(structure).map(c => {
-            return `<li><span title="${c}">${c}</span>
-                <ul class="menu-level-2">
-                    ${Object.keys(structure[c]).map(s => {
-                        return `<li><span title="${s}">${s}</span>
-                            <ul class="menu-level-3">
-                                ${structure[c][s].map(m => {
-                                    return `<li><span title="${m}">${m}</span>
-                                        <ul class="menu-level-4">
-                                            <li title="${c}/${s}/${m}/${c}.csv" onclick="selectConfig('${columnId}', '${escapeJS(c)}', '${escapeJS(s)}', '${escapeJS(m)}')">${c}.csv</li>
-                                        </ul>
-                                    </li>`;
-                                }).join('')}
-                            </ul>
-                        </li>`;
-                    }).join('')}
-                </ul>
-            </li>`;
-        }).join('')}
-    </ul>`;
-}
-
-function toggleMenu(button, level = 1) {
+function toggleMenu(button, event) {
+    event.stopPropagation();
     const dropdown = button.nextElementSibling;
     const isOpen = dropdown.style.display === 'block';
-    if (isOpen) {
-        closeAllMenus(button.closest('.nested-dropdown'));
-    } else {
-        closeAllMenus(button.closest('.nested-dropdown'));
+    document.querySelectorAll('.nested-dropdown').forEach(nestedDropdown => {
+        closeAllMenus(nestedDropdown);
+    });
+    if (!isOpen) {
         const rect = button.getBoundingClientRect();
         dropdown.style.position = 'fixed';
-        dropdown.style.top = `${rect.bottom}px`;
-        dropdown.style.left = `${rect.left}px`;
+        dropdown.style.top = `${rect.bottom + window.scrollY}px`;
+        dropdown.style.left = `${rect.left + window.scrollX}px`;
         dropdown.style.display = 'block';
+        dropdown.style.backgroundColor = '#fff';
+        dropdown.style.zIndex = '10000';
+        dropdown.querySelector('ul').style.display = 'block';
+        console.log('Dropdown opened at top:', dropdown.style.top, 'left:', dropdown.style.left);
+        console.log('Dropdown content:', dropdown.innerHTML);
     }
 }
 
-function toggleSubMenu(span, level) {
+function toggleSubMenu(span, event) {
+    event.stopPropagation();
     const li = span.parentElement;
-    const submenu = li.querySelector(`.menu-level-${level + 1}`);
+    const submenu = li.querySelector('ul');
     if (!submenu) return;
-    const isActive = li.classList.contains('active');
-    closeAllSubMenus(li.closest(`.menu-level-${level}`));
-    if (!isActive) {
+    const isOpen = li.classList.contains('open');
+    closeAllSubMenus(li.closest('ul'));
+    if (!isOpen) {
         const rect = span.getBoundingClientRect();
         submenu.style.position = 'fixed';
-        submenu.style.top = `${rect.top}px`;
-        submenu.style.left = `${rect.right + 5}px`; // Small offset for clarity
+        submenu.style.top = `${rect.top + window.scrollY}px`;
+        submenu.style.left = `${rect.right + 5 + window.scrollX}px`;
         submenu.style.display = 'block';
-        li.classList.add('active');
-        // Adjust position to stay within viewport
+        submenu.style.zIndex = '10001';
+        li.classList.add('open');
         const submenuRect = submenu.getBoundingClientRect();
         if (submenuRect.right > window.innerWidth) {
-            submenu.style.left = `${rect.left - submenuRect.width - 5}px`;
+            submenu.style.left = `${rect.left - submenuRect.width - 5 + window.scrollX}px`;
         }
         if (submenuRect.bottom > window.innerHeight) {
-            submenu.style.top = `${window.innerHeight - submenuRect.height}px`;
+            submenu.style.top = `${window.innerHeight - submenuRect.height + window.scrollY}px`;
         }
+        console.log('Submenu opened at top:', submenu.style.top, 'left:', submenu.style.left);
     }
 }
 
 function closeAllMenus(nestedDropdown) {
-    nestedDropdown.querySelectorAll('.dropdown-content, .menu-level-2, .menu-level-3, .menu-level-4').forEach(menu => {
+    nestedDropdown.querySelectorAll('.dropdown-content, .dropdown-content ul').forEach(menu => {
         menu.style.display = 'none';
         menu.style.position = '';
         menu.style.top = '';
         menu.style.left = '';
     });
-    nestedDropdown.querySelectorAll('li.active').forEach(li => li.classList.remove('active'));
+    nestedDropdown.querySelectorAll('li.open').forEach(li => li.classList.remove('open'));
 }
 
 function closeAllSubMenus(menu) {
-    menu.querySelectorAll('li.active').forEach(li => {
-        li.classList.remove('active');
+    menu.querySelectorAll('li.open').forEach(li => {
+        li.classList.remove('open');
         const submenu = li.querySelector('ul');
         if (submenu) {
             submenu.style.display = 'none';
@@ -183,24 +184,54 @@ function recalculateAndRedrawAll() {
     globalMaxValue = maxVal;
 
     Object.keys(columnsState).forEach(columnId => {
-        if (columnsState[columnId].className && columnsState[columnId].scaling && columnsState[columnId].mode) {
+        if (columnsState[columnId].fullPath) {
             renderTable(columnId);
         }
     });
 }
 
-async function loadDataForColumn(className, scaling, mode, columnId) {
-    try {
-        const path = `data/${encodeURIComponent(className)}/${encodeURIComponent(scaling)}/${encodeURIComponent(mode)}/${encodeURIComponent(className)}.csv`;
-        const response = await fetch(path);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const text = await response.text();
-        const rows = text.split('\n').filter(line => line.trim() !== '').map(row => row.split(','));
-        columnsState[columnId].data = rows;
-    } catch (error) {
-        console.error(`Error loading data for ${className}/${scaling}/${mode}:`, error);
-        columnsState[columnId].data = [];
+async function loadDataForColumn(fullPath, csvFile, columnId) {
+    const container = document.querySelector(`.column[data-column-id='${columnId}'] .table-container`);
+    const baseUrl = 'https://web.etp.kit.edu/~amonsch/2025-10-21/tca_explore_tests/data/';
+    const attempts = [
+        // Primary path with encoding
+        `${baseUrl}${encodeURIComponent(fullPath)}/${encodeURIComponent(csvFile)}`,
+        // Raw path without encoding
+        `${baseUrl}${fullPath}/${csvFile}`,
+        // Path without deepest directory
+        `${baseUrl}${encodeURIComponent(fullPath.split('/').slice(0, -1).join('/'))}/${encodeURIComponent(csvFile)}`
+    ];
+
+    let lastError = null;
+    for (const url of attempts) {
+        console.log('Attempting to load CSV from:', url);
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/csv',
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const text = await response.text();
+            const rows = text.split('\n').filter(line => line.trim() !== '').map(row => row.split(','));
+            columnsState[columnId].data = rows;
+            container.innerHTML = '';
+            console.log(`Successfully loaded CSV from: ${url}`);
+            return;
+        } catch (error) {
+            console.error(`Failed to load CSV from ${url}:`, error);
+            lastError = error;
+        }
     }
+
+    // All attempts failed
+    columnsState[columnId].data = [];
+    const errorMessage = `Failed to load CSV: ${lastError.message}.<br>Attempted URLs:<br>${attempts.join('<br>')}<br>Please verify the file exists on the server at: ${baseUrl}${fullPath}/${csvFile}`;
+    container.innerHTML = `<p style="color: red; padding: 10px;">${errorMessage}</p>`;
 }
 
 // --- UI-TRIGGERED FUNCTIONS ---
@@ -209,11 +240,16 @@ function handleAggregateToggle(isChecked) {
     if (!isChecked) clearHighlights();
 }
 
-function addColumn() {
+async function addColumn() {
+    if (!isFolderStructureLoaded) {
+        alert('Folder structure is still loading. Please wait.');
+        return;
+    }
     const columnId = `col-${nextColumnId++}`;
     const columnEl = document.createElement('div');
     columnEl.className = 'column';
     columnEl.dataset.columnId = columnId;
+    const menuHtml = await buildNestedMenu(columnId);
     columnEl.innerHTML = `
         <div class="column-header">
             <input type="text" class="custom-header" placeholder="Custom label" oninput="onCustomHeader(this.value, '${columnId}')">
@@ -221,7 +257,7 @@ function addColumn() {
                 <div class="nested-dropdown">
                     <button class="dropbtn">Select Configuration</button>
                     <div class="dropdown-content">
-                        ${buildNestedMenu(columnId)}
+                        ${menuHtml}
                     </div>
                 </div>
             </div>
@@ -229,16 +265,12 @@ function addColumn() {
         </div>
         <div class="table-container"></div>`;
     document.getElementById('columns-container').appendChild(columnEl);
-    columnsState[columnId] = { className: null, scaling: null, mode: null, customHeader: '', data: [], sort: {} };
+    columnsState[columnId] = { className: null, fullPath: null, csvFile: null, customHeader: '', data: [], sort: {} };
     const button = columnEl.querySelector('.dropbtn');
-    button.addEventListener('click', () => toggleMenu(button));
-    const spans = columnEl.querySelectorAll('.menu-level-1 > li > span, .menu-level-2 > li > span, .menu-level-3 > li > span');
+    button.addEventListener('click', (e) => toggleMenu(button, e));
+    const spans = columnEl.querySelectorAll('.dropdown-content li > span');
     spans.forEach(span => {
-        span.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const level = parseInt(span.closest('ul').className.match(/menu-level-(\d)/)[1]);
-            toggleSubMenu(span, level);
-        });
+        span.addEventListener('click', (e) => toggleSubMenu(span, e));
     });
 }
 
@@ -246,22 +278,24 @@ function onCustomHeader(value, columnId) {
     columnsState[columnId].customHeader = value;
 }
 
-function selectConfig(columnId, className, scaling, mode) {
+function selectConfig(columnId, fullPath, csv) {
+    const className = fullPath.split('/')[0];
     columnsState[columnId].className = className;
-    columnsState[columnId].scaling = scaling;
-    columnsState[columnId].mode = mode;
+    columnsState[columnId].fullPath = fullPath;
+    columnsState[columnId].csvFile = csv;
     const button = document.querySelector(`.column[data-column-id='${columnId}'] .dropbtn`);
     button.textContent = className;
-    button.title = `${className}/${scaling}/${mode}`;
+    button.title = `${fullPath}/${csv}`;
+    console.log('Selected config path:', fullPath, 'CSV:', csv);
     closeAllMenus(button.closest('.nested-dropdown'));
     tryLoadData(columnId);
 }
 
 async function tryLoadData(columnId) {
     const state = columnsState[columnId];
-    const { className, scaling, mode } = state;
-    if (className && scaling && mode) {
-        await loadDataForColumn(className, scaling, mode, columnId);
+    const { fullPath, csvFile } = state;
+    if (fullPath && csvFile) {
+        await loadDataForColumn(fullPath, csvFile, columnId);
         if (state.data && state.data.length > 1) {
             const lastColIndex = state.data[0].length - 1;
             state.sort = { by: lastColIndex, order: 'desc' };
@@ -288,7 +322,9 @@ async function renderTable(columnId) {
     const { data, sort } = columnsState[columnId];
     const container = document.querySelector(`.column[data-column-id='${columnId}'] .table-container`);
     if (!data || data.length < 2) {
-        container.innerHTML = '';
+        if (!container.innerHTML) {
+            container.innerHTML = '<p>No data loaded.</p>';
+        }
         return;
     }
     const header = data[0];
@@ -461,12 +497,12 @@ function generatePermalink() {
     const aggregateChecked = document.getElementById('aggregate-checkbox').checked;
     const highlights = Array.from(highlightedVars.entries());
     const columns = Object.values(columnsState).map(state => ({
+        fullPath: state.fullPath,
         className: state.className,
-        scaling: state.scaling,
-        mode: state.mode,
+        csvFile: state.csvFile,
         customHeader: state.customHeader,
         sort: state.sort
-    })).filter(c => c.className && c.scaling && c.mode);
+    })).filter(c => c.fullPath && c.className && c.csvFile);
 
     const state = { aggregateChecked, highlights, columns };
     const hash = btoa(JSON.stringify(state));
@@ -475,6 +511,10 @@ function generatePermalink() {
 }
 
 async function loadFromPermalink() {
+    if (!isFolderStructureLoaded) {
+        console.warn('Cannot load permalink: folder structure not loaded yet');
+        return;
+    }
     if (!window.location.hash || window.location.hash.length < 2) return;
     try {
         const hash = window.location.hash.substring(1);
@@ -489,11 +529,12 @@ async function loadFromPermalink() {
         }
 
         if (state.columns && Array.isArray(state.columns)) {
-            const loadPromises = state.columns.map(colState => {
+            const loadPromises = state.columns.map(async colState => {
                 const columnId = `col-${nextColumnId++}`;
                 const columnEl = document.createElement('div');
                 columnEl.className = 'column';
                 columnEl.dataset.columnId = columnId;
+                const menuHtml = await buildNestedMenu(columnId);
                 columnEl.innerHTML = `
                     <div class="column-header">
                         <input type="text" class="custom-header" placeholder="Custom label" value="${colState.customHeader || ''}" oninput="onCustomHeader(this.value, '${columnId}')">
@@ -501,7 +542,7 @@ async function loadFromPermalink() {
                             <div class="nested-dropdown">
                                 <button class="dropbtn">Select Configuration</button>
                                 <div class="dropdown-content">
-                                    ${buildNestedMenu(columnId)}
+                                    ${menuHtml}
                                 </div>
                             </div>
                         </div>
@@ -512,27 +553,23 @@ async function loadFromPermalink() {
                 
                 columnsState[columnId] = { 
                     className: colState.className, 
-                    scaling: colState.scaling, 
-                    mode: colState.mode, 
+                    fullPath: colState.fullPath,
+                    csvFile: colState.csvFile,
                     customHeader: colState.customHeader || '', 
                     data: [], 
                     sort: colState.sort || {} 
                 };
                 
                 const button = columnEl.querySelector('.dropbtn');
-                button.addEventListener('click', () => toggleMenu(button));
-                const spans = columnEl.querySelectorAll('.menu-level-1 > li > span, .menu-level-2 > li > span, .menu-level-3 > li > span');
+                button.addEventListener('click', (e) => toggleMenu(button, e));
+                const spans = columnEl.querySelectorAll('.dropdown-content li > span');
                 spans.forEach(span => {
-                    span.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const level = parseInt(span.closest('ul').className.match(/menu-level-(\d)/)[1]);
-                        toggleSubMenu(span, level);
-                    });
+                    span.addEventListener('click', (e) => toggleSubMenu(span, e));
                 });
 
-                if (colState.className && colState.scaling && colState.mode) {
+                if (colState.fullPath && colState.className && colState.csvFile) {
                     button.textContent = colState.className;
-                    button.title = `${colState.className}/${colState.scaling}/${colState.mode}`;
+                    button.title = `${colState.fullPath}/${colState.csvFile}`;
                 }
                 
                 return tryLoadData(columnId);
@@ -547,4 +584,18 @@ async function loadFromPermalink() {
 }
 
 // --- INITIALIZATION ---
-window.onload = loadFromPermalink;
+window.onload = async () => {
+    document.getElementById('add-column-btn').disabled = true;
+    document.addEventListener('click', (e) => {
+        setTimeout(() => {
+            if (!e.target.closest('.nested-dropdown')) {
+                console.log('Document click handler triggered');
+                document.querySelectorAll('.nested-dropdown').forEach(nestedDropdown => {
+                    closeAllMenus(nestedDropdown);
+                });
+            }
+        }, 0);
+    }, { once: false });
+    await initFolderStructure();
+    await loadFromPermalink();
+};
