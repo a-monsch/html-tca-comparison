@@ -180,12 +180,12 @@ th {
     position: fixed;
     background-color: white;
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 10000; /* Increased to ensure visibility */
+    z-index: 10000;
     width: max-content;
     max-height: 300px;
     overflow-y: auto;
     overflow-x: hidden;
-    border: 2px solid red !important; /* Debug: Make dropdown obvious */
+    border: 2px solid red !important;
 }
 
 .dropdown-content ul {

@@ -1,4 +1,3 @@
-// --- CONFIGURATION ---
 let folderStructure = {};
 let isFolderStructureLoaded = false;
 
@@ -21,7 +20,6 @@ async function initFolderStructure() {
     }
 }
 
-// Color classes from style.css for aggregate highlighting
 const HIGHLIGHT_COLORS = [
     'highlight-color-0', 'highlight-color-1', 'highlight-color-2',
     'highlight-color-3', 'highlight-color-4', 'highlight-color-5',
@@ -29,13 +27,10 @@ const HIGHLIGHT_COLORS = [
     'highlight-color-9', 'highlight-color-10', 'highlight-color-11'
 ];
 
-// --- APPLICATION STATE ---
 let columnsState = {};
 let nextColumnId = 0;
 let highlightedVars = new Map();
 let globalMaxValue = 0;
-
-// --- HELPER FUNCTIONS ---
 
 function escapeJS(str) {
     return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -166,8 +161,6 @@ function closeAllSubMenus(menu) {
     });
 }
 
-// --- CORE LOGIC ---
-
 function recalculateAndRedrawAll() {
     let maxVal = 0;
     Object.values(columnsState).forEach(state => {
@@ -192,7 +185,7 @@ function recalculateAndRedrawAll() {
 
 async function loadDataForColumn(fullPath, csvFile, columnId) {
     const container = document.querySelector(`.column[data-column-id='${columnId}'] .table-container`);
-    const baseUrl = 'https://web.etp.kit.edu/~amonsch/2025-10-21/tca_explore_tests/data/';
+    const baseUrl = 'data/';
     const attempts = [
         // Primary path with encoding
         `${baseUrl}${encodeURIComponent(fullPath)}/${encodeURIComponent(csvFile)}`,
@@ -228,13 +221,10 @@ async function loadDataForColumn(fullPath, csvFile, columnId) {
         }
     }
 
-    // All attempts failed
     columnsState[columnId].data = [];
     const errorMessage = `Failed to load CSV: ${lastError.message}.<br>Attempted URLs:<br>${attempts.join('<br>')}<br>Please verify the file exists on the server at: ${baseUrl}${fullPath}/${csvFile}`;
     container.innerHTML = `<p style="color: red; padding: 10px;">${errorMessage}</p>`;
 }
-
-// --- UI-TRIGGERED FUNCTIONS ---
 
 function handleAggregateToggle(isChecked) {
     if (!isChecked) clearHighlights();
@@ -315,8 +305,6 @@ function closeColumn(columnId) {
         recalculateAndRedrawAll();
     }
 }
-
-// --- RENDERING & SORTING ---
 
 async function renderTable(columnId) {
     const { data, sort } = columnsState[columnId];
@@ -417,8 +405,6 @@ function sortColumn(columnId, sortBy) {
     columnsState[columnId].sort = { by: sortBy, order };
     renderTable(columnId);
 }
-
-// --- HIGHLIGHTING & PERMALINK ---
 
 function formatScientific(value) {
     if (value === 0) return "0.00";
@@ -583,7 +569,6 @@ async function loadFromPermalink() {
     }
 }
 
-// --- INITIALIZATION ---
 window.onload = async () => {
     document.getElementById('add-column-btn').disabled = true;
     document.addEventListener('click', (e) => {
