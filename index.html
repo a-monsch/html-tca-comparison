@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TC Data Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="controls">
+        <button id="add-column-btn" class="btn" onclick="addColumn()">Add Column</button>
+        <button class="btn btn-secondary" onclick="generatePermalink()">Update Permalink URL</button>
+
+        <div class="control-group exclude-group">
+            <label for="exclude-input">Exclude Variables:</label>
+            <input
+                type="text"
+                id="exclude-input"
+                placeholder="var_a, var_b, var_c"
+                oninput="handleExcludeInput(event)"
+                onkeydown="handleExcludeInputKeydown(event)"
+            >
+        </div>
+        
+        <div class="control-group">
+            <label for="dim-select">Dimension:</label>
+            <select id="dim-select" onchange="handleDimChange()">
+                <option value="both">Both</option>
+                <option value="1d">1D Only</option>
+                <option value="2d">2D Only</option>
+            </select>
+        </div>
+
+        <div class="control-group search-group">
+            <input type="text" id="search-input" placeholder="Search variables..." oninput="handleSearchInput()">
+            <select id="search-mode" onchange="handleSearchModeChange()">
+                <option value="highlight">Highlight</option>
+                <option value="filter">Filter</option>
+            </select>
+        </div>
+
+        <div class="checkbox-container control-group">
+            <input type="checkbox" id="aggregate-checkbox">
+            <label for="aggregate-checkbox">Aggregate Highlights</label>
+        </div>
+
+        <div class="control-group">
+            <button id="toggle-analysis-btn" class="btn btn-secondary" type="button" onclick="toggleBasicAnalysisPanel()">Basic Analysis</button>
+        </div>
+
+        <div class="controls-spacer"></div>
+
+        <div class="controls-right">
+            <div class="help-wrapper" aria-label="Help">
+                <button class="help-btn" type="button" aria-describedby="help-tooltip">?</button>
+                <div class="help-tooltip" id="help-tooltip" role="tooltip">
+                    Multi-select inside each column to compare values side-by-side for the same variable pair. Use Exclude Variables to remove variables and their correlations globally. Highlight or filter with search, then share the current setup using the permalink.
+                </div>
+            </div>
+
+            <label class="darkmode-toggle" for="dark-mode-toggle">
+                <span>Dark mode</span>
+                <input type="checkbox" id="dark-mode-toggle" onchange="handleDarkModeToggle()">
+            </label>
+        </div>
+    </div>
+    <div class="workspace-content">
+        <div id="columns-container"></div>
+
+        <aside id="analysis-panel" class="analysis-panel" aria-hidden="true">
+            <div class="analysis-panel-header">
+                <h2>Basic Analysis</h2>
+                <button
+                    class="analysis-close-btn"
+                    type="button"
+                    aria-label="Close Basic Analysis"
+                    onclick="toggleBasicAnalysisPanel(false)"
+                >&times;</button>
+            </div>
+
+            <div class="analysis-panel-body">
+                <details class="analysis-menu" id="analysis-menu-unique-vars">
+                    <summary>Unique variables in N</summary>
+                    <div class="analysis-menu-content">
+                        <label for="unique-vars-n-input">Number of rows (N)</label>
+                        <input
+                            type="number"
+                            id="unique-vars-n-input"
+                            min="1"
+                            step="1"
+                            placeholder="Enter N"
+                            oninput="handleUniqueVariablesInput()"
+                        >
+                        <div id="unique-vars-results" class="analysis-results">
+                            Enter N to compute unique variables from the first N visible rows.
+                        </div>
+                    </div>
+                </details>
+
+                <details class="analysis-menu" id="analysis-menu-alpha-vars">
+                    <summary>Variables above alpha threshold</summary>
+                    <div class="analysis-menu-content">
+                        <label for="alpha-vars-input">Alpha (0 to 1)</label>
+                        <input
+                            type="number"
+                            id="alpha-vars-input"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            placeholder="Enter alpha"
+                            oninput="handleAlphaVariablesInput()"
+                        >
+                        <div id="alpha-vars-results" class="analysis-results">
+                            Enter alpha to compute variables from rows with TC value above alpha times the column maximum.
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </aside>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
