@@ -21,10 +21,11 @@ def build_folder_structure(root_dir, base_path=""):
             
     return structure
 
-data_dir = "./data" 
-folder_structure = build_folder_structure(data_dir)
+if __name__ == "__main__":
+    data_dir = "./data" 
+    folder_structure = build_folder_structure(data_dir)
 
-with open("folder_structure.json", "w") as f:
-    json.dump(folder_structure, f, indent=4)
+    with open("folder_structure.json", "w") as f:
+        json.dump(folder_structure, f, indent=4)
 
-print(f"Generated folder_structure.json containing {len(folder_structure.keys())} root keys.")
+    print(f"Generated folder_structure.json containing {len(folder_structure.keys())} root keys.")

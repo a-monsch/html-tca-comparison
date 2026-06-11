@@ -328,7 +328,8 @@ select:focus {
 }
 
 .column {
-    flex: 1 0 520px;
+    flex: 0 0 auto;
+    width: 520px;
     min-width: 520px;
     min-height: min(68vh, 520px);
     background-color: var(--bg-panel);
@@ -596,7 +597,53 @@ th.th-sortable:hover {
 }
 
 .value-cell {
+    position: relative;
     padding: 0 8px !important;
+}
+
+.value-header-label {
+    display: inline-block;
+    padding-right: 16px;
+}
+
+.analysis-col-toggle {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 4;
+}
+
+th.value-col:hover .analysis-col-toggle,
+th.value-col:focus-within .analysis-col-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.analysis-col-toggle input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #16a34a;
+}
+
+th.value-col.analysis-col-disabled {
+    color: var(--text-muted);
+}
+
+.value-cell.analysis-col-disabled .bar-text {
+    color: var(--text-muted);
+    opacity: 0.72;
+}
+
+.value-cell.analysis-col-disabled .bar-plot {
+    opacity: 0.09;
 }
 
 .bar-container {
@@ -685,7 +732,7 @@ tr[class*="highlight-color-"] .bar-plot,
     }
 
     .column {
-        flex-basis: 460px;
+        width: 460px;
         min-width: 460px;
     }
 

@@ -11,8 +11,12 @@ let isAnalysisPanelOpen = false;
 let lastExcludeInputValue = '';
 
 const VAR_COL_MIN_WIDTH = 140;
+const VAR_COL_MAX_WIDTH = 280;
 const MONO_CHAR_WIDTH_PX = 8.4;
 const VAR_CELL_PADDING_PX = 28;
+const VALUE_CELL_MIN_WIDTH = 120;
+const VALUE_CELL_PADDING_PX = 26;
+const COLUMN_BASE_MIN_WIDTH = 360;
 
 function requestPermalinkUpdate() {
     if (!isRestoringState) {
@@ -68,6 +72,34 @@ function normalizeAnalysisState(rawAnalysis = null) {
     };
 }
 
+function normalizeDisabledValueIndices(rawColumn = null) {
+    const indices = new Set();
+
+    if (rawColumn && Array.isArray(rawColumn.disabledValueIndices)) {
+        rawColumn.disabledValueIndices.forEach(idx => {
+            if (Number.isInteger(idx) && idx >= 0) {
+                indices.add(idx);
+            }
+        });
+    }
+
+    // Backward compatibility with old per-cell format.
+    if (rawColumn && Array.isArray(rawColumn.disabledCells)) {
+        rawColumn.disabledCells.forEach(cellKey => {
+            if (typeof cellKey !== 'string') return;
+            const separatorIdx = cellKey.lastIndexOf('::');
+            if (separatorIdx < 0) return;
+
+            const valueIndex = Number.parseInt(cellKey.slice(separatorIdx + 2), 10);
+            if (Number.isInteger(valueIndex) && valueIndex >= 0) {
+                indices.add(valueIndex);
+            }
+        });
+    }
+
+    return Array.from(indices).sort((a, b) => a - b);
+}
+
 function getViewStateFromPermalink() {
     const params = new URLSearchParams(window.location.search);
     const stateParam = params.get('state');
@@ -84,7 +116,8 @@ function getViewStateFromPermalink() {
                             : [],
                         sortCol: col.sortCol === 'v1' || col.sortCol === 'v2' || col.sortCol === 'val' ? col.sortCol : 'val',
                         sortDir: col.sortDir === 1 || col.sortDir === -1 ? col.sortDir : -1,
-                        sortValIndex: Number.isInteger(col.sortValIndex) ? col.sortValIndex : 0
+                        sortValIndex: Number.isInteger(col.sortValIndex) ? col.sortValIndex : 0,
+                        disabledValueIndices: normalizeDisabledValueIndices(col)
                     })),
                     exclude: typeof parsed.exclude === 'string' ? parsed.exclude : '',
                     dim: parsed.dim === '1d' || parsed.dim === '2d' || parsed.dim === 'both' ? parsed.dim : 'both',
@@ -265,12 +298,14 @@ function normalizeColumnConfig(configOrPath = null, titleToLoad = null) {
         const selections = Array.isArray(configOrPath.selections)
             ? configOrPath.selections.map(sel => (typeof sel === 'string' && sel ? sel : null))
             : [];
+        const disabledValueIndices = normalizeDisabledValueIndices(configOrPath);
         return {
             title: typeof configOrPath.title === 'string' ? configOrPath.title : 'TC Data Column',
             selections,
             sortCol: configOrPath.sortCol === 'v1' || configOrPath.sortCol === 'v2' || configOrPath.sortCol === 'val' ? configOrPath.sortCol : 'val',
             sortDir: configOrPath.sortDir === 1 || configOrPath.sortDir === -1 ? configOrPath.sortDir : -1,
-            sortValIndex: Number.isInteger(configOrPath.sortValIndex) ? configOrPath.sortValIndex : 0
+            sortValIndex: Number.isInteger(configOrPath.sortValIndex) ? configOrPath.sortValIndex : 0,
+            disabledValueIndices
         };
     }
 
@@ -280,7 +315,8 @@ function normalizeColumnConfig(configOrPath = null, titleToLoad = null) {
             selections: [configOrPath],
             sortCol: 'val',
             sortDir: -1,
-            sortValIndex: 0
+            sortValIndex: 0,
+            disabledValueIndices: []
         };
     }
 
@@ -289,7 +325,8 @@ function normalizeColumnConfig(configOrPath = null, titleToLoad = null) {
         selections: [],
         sortCol: 'val',
         sortDir: -1,
-        sortValIndex: 0
+        sortValIndex: 0,
+        disabledValueIndices: []
     };
 }
 
@@ -303,7 +340,8 @@ function addColumn(configOrPath = null, titleToLoad = null, suppressPermalinkUpd
         rowsMap: {},
         sortCol: config.sortCol,
         sortDir: config.sortDir,
-        sortValIndex: config.sortValIndex
+        sortValIndex: config.sortValIndex,
+        analysisDisabledValueIndices: new Set(config.disabledValueIndices)
     };
     columns.push(colObj);
 
@@ -359,6 +397,7 @@ function addSelectionControl(colId, fileToLoad = null, updatePermalinkAfter = tr
 
     const selectionId = createId('sel');
     col.selections.push({ id: selectionId, path: null, data: [] });
+    pruneAnalysisDisabledValueIndices(col);
 
     const selectorsContainer = document.getElementById(`selectors-${colId}`);
     selectorsContainer.insertAdjacentHTML('beforeend', `
@@ -387,9 +426,21 @@ function removeSelectionControl(colId, selectionId) {
     const col = columns.find(c => c.id === colId);
     if (!col) return;
 
+    const removedIndex = col.selections.findIndex(s => s.id === selectionId);
+
     col.selections = col.selections.filter(s => s.id !== selectionId);
     const selEl = document.getElementById(`selector-${colId}-${selectionId}`);
     if (selEl) selEl.remove();
+
+    if (removedIndex >= 0 && col.analysisDisabledValueIndices instanceof Set) {
+        const remapped = new Set();
+        col.analysisDisabledValueIndices.forEach(idx => {
+            if (!Number.isInteger(idx)) return;
+            if (idx === removedIndex) return;
+            remapped.add(idx > removedIndex ? idx - 1 : idx);
+        });
+        col.analysisDisabledValueIndices = remapped;
+    }
 
     if (col.sortValIndex >= col.selections.length) {
         col.sortValIndex = Math.max(0, col.selections.length - 1);
@@ -398,6 +449,8 @@ function removeSelectionControl(colId, selectionId) {
     if (col.selections.length === 0) {
         addSelectionControl(colId, null, false);
     }
+
+    pruneAnalysisDisabledValueIndices(col);
 
     renderColumn(colId);
     requestPermalinkUpdate();
@@ -531,9 +584,19 @@ function renderTableHead(col, showVar2) {
     const valueHeaders = col.selections.map((sel, idx) => {
         const fullLabel = sel.path ? sel.path.replace(/^data\//, '') : `TC ${idx + 1}`;
         const label = `TC ${idx + 1}`;
+        const isAnalysisEnabled = isAnalysisValueEnabled(col, idx);
         return `
-            <th class="th-sortable value-col" onclick="toggleSort('${col.id}', 'val', ${idx})" title="${fullLabel}">
-                ${label}
+            <th class="th-sortable value-col ${isAnalysisEnabled ? '' : 'analysis-col-disabled'}" onclick="toggleSort('${col.id}', 'val', ${idx})" title="${fullLabel}">
+                <span class="value-header-label">${label}</span>
+                <label class="analysis-col-toggle" title="Include this TC column in Basic Analysis" onclick="event.stopPropagation()">
+                    <input
+                        type="checkbox"
+                        ${isAnalysisEnabled ? 'checked' : ''}
+                        aria-label="Include ${label} in Basic Analysis"
+                        onclick="event.stopPropagation()"
+                        onchange="handleAnalysisValueToggle('${col.id}', ${idx}, this.checked, event)"
+                    >
+                </label>
                 <span class="sort-icon" id="sort-${col.id}-val-${idx}"></span>
             </th>
         `;
@@ -552,6 +615,12 @@ function renderTableHead(col, showVar2) {
     `;
 }
 
+function handleAnalysisValueToggle(colId, valueIndex, isEnabled, event) {
+    if (event) event.stopPropagation();
+    setAnalysisValueEnabled(colId, valueIndex, isEnabled);
+    renderColumn(colId, true);
+}
+
 function getLongestVariableLength(rows, showVar2) {
     let longest = 4;
     rows.forEach(item => {
@@ -561,37 +630,59 @@ function getLongestVariableLength(rows, showVar2) {
     return longest;
 }
 
-function computeTableWidths(col, showVar2, longestVarLength) {
-    const tableContainer = document.querySelector(`#col-${col.id} .table-container`);
-    const containerWidth = Math.max(320, tableContainer ? tableContainer.clientWidth : 520);
+function getScientificTextLength(value) {
+    if (!Number.isFinite(value)) {
+        return String(value).length;
+    }
+    if (value === 0) {
+        return '0.00e0'.length;
+    }
+
+    const [mantissaRaw, exponentRaw] = value.toExponential(2).split('e');
+    const mantissa = Number(mantissaRaw).toFixed(2);
+    const exponent = Number(exponentRaw);
+    return `${mantissa}e${exponent}`.length;
+}
+
+function computeTableWidths(col, showVar2, longestVarLength, longestValueLength) {
     const valueCount = Math.max(1, col.selections.length);
     const varColCount = showVar2 ? 2 : 1;
 
-    const targetVarWidth = Math.max(
-        VAR_COL_MIN_WIDTH,
-        Math.ceil(longestVarLength * MONO_CHAR_WIDTH_PX + VAR_CELL_PADDING_PX)
+    const targetVarWidth = Math.ceil(longestVarLength * MONO_CHAR_WIDTH_PX + VAR_CELL_PADDING_PX);
+    const varWidth = Math.max(VAR_COL_MIN_WIDTH, Math.min(VAR_COL_MAX_WIDTH, targetVarWidth));
+
+    const baseValueWidth = Math.max(
+        VALUE_CELL_MIN_WIDTH,
+        Math.ceil(longestValueLength * MONO_CHAR_WIDTH_PX + VALUE_CELL_PADDING_PX)
     );
 
-    let varWidth = targetVarWidth;
-    const maxVarWidthThatFits = containerWidth / varColCount;
-    if (varWidth > maxVarWidthThatFits) {
-        varWidth = Math.max(80, maxVarWidthThatFits);
-    }
-
-    const remainingForValues = Math.max(0, containerWidth - (varColCount * varWidth));
-    const valueWidth = remainingForValues / valueCount;
+    const minContentWidth = (varColCount * varWidth) + (valueCount * baseValueWidth);
+    const totalWidth = Math.max(COLUMN_BASE_MIN_WIDTH, minContentWidth);
+    const extraWidth = totalWidth - minContentWidth;
+    const valueWidth = baseValueWidth + (extraWidth / valueCount);
 
     return {
         varWidth,
-        valueWidth
+        valueWidth,
+        totalWidth
     };
 }
 
-function renderColgroup(col, showVar2, longestVarLength) {
+function applyColumnWidth(colId, totalWidth) {
+    const columnEl = document.getElementById(`col-${colId}`);
+    if (!columnEl || !Number.isFinite(totalWidth)) return;
+
+    const widthPx = Math.ceil(totalWidth);
+    columnEl.style.width = `${widthPx}px`;
+    columnEl.style.minWidth = `${widthPx}px`;
+    columnEl.style.flex = `0 0 ${widthPx}px`;
+}
+
+function renderColgroup(col, showVar2, widths) {
     const colgroup = document.getElementById(`colgroup-${col.id}`);
     if (!colgroup) return;
 
-    const { varWidth, valueWidth } = computeTableWidths(col, showVar2, longestVarLength);
+    const { varWidth, valueWidth } = widths;
     const valueCount = Math.max(1, col.selections.length);
 
     const valueCols = Array.from({ length: valueCount }, () => `<col style="width: ${valueWidth.toFixed(2)}px;">`).join('');
@@ -724,6 +815,67 @@ function getVariableSetFromRows(rows, nRows) {
     return vars;
 }
 
+function isAnalysisValueEnabled(col, valueIndex) {
+    if (!col || !(col.analysisDisabledValueIndices instanceof Set)) {
+        return true;
+    }
+
+    return !col.analysisDisabledValueIndices.has(valueIndex);
+}
+
+function setAnalysisValueEnabled(colId, valueIndex, isEnabled) {
+    const col = columns.find(c => c.id === colId);
+    if (!col) return;
+
+    if (!(col.analysisDisabledValueIndices instanceof Set)) {
+        col.analysisDisabledValueIndices = new Set();
+    }
+
+    if (isEnabled) {
+        col.analysisDisabledValueIndices.delete(valueIndex);
+    } else {
+        col.analysisDisabledValueIndices.add(valueIndex);
+    }
+
+    refreshBasicAnalysisPanel();
+    requestPermalinkUpdate();
+}
+
+function pruneAnalysisDisabledValueIndices(col) {
+    if (!col) return;
+
+    if (!(col.analysisDisabledValueIndices instanceof Set)) {
+        col.analysisDisabledValueIndices = new Set();
+        return;
+    }
+
+    const maxValueIndex = col.selections.length - 1;
+    const pruned = new Set();
+
+    col.analysisDisabledValueIndices.forEach(valueIndex => {
+        if (!Number.isInteger(valueIndex) || valueIndex < 0 || valueIndex > maxValueIndex) return;
+        pruned.add(valueIndex);
+    });
+
+    col.analysisDisabledValueIndices = pruned;
+}
+
+function isRowIncludedInBasicAnalysis(col, row) {
+    if (!row || !Array.isArray(row.values)) {
+        return false;
+    }
+
+    return row.values.some((value, idx) => Number.isFinite(value) && isAnalysisValueEnabled(col, idx));
+}
+
+function getRowsForBasicAnalysis(col, rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+        return [];
+    }
+
+    return rows.filter(row => isRowIncludedInBasicAnalysis(col, row));
+}
+
 function sortedArrayFromSet(values) {
     return Array.from(values).sort((a, b) => a.localeCompare(b));
 }
@@ -788,29 +940,19 @@ function renderSetComparisonBlocks(perColumn) {
     return html;
 }
 
-function getColumnTcValueIndex(col) {
-    if (!Array.isArray(col.selections) || col.selections.length === 0) {
-        return -1;
-    }
-
-    if (Number.isInteger(col.sortValIndex) && col.sortValIndex >= 0 && col.sortValIndex < col.selections.length) {
-        return col.sortValIndex;
-    }
-
-    return 0;
-}
-
-function getVariableSetFromRowsByAlpha(rows, valueIndex, alpha) {
-    if (valueIndex < 0 || !Array.isArray(rows) || rows.length === 0) {
+function getVariableSetFromRowsByAlpha(col, rows, alpha) {
+    if (!Array.isArray(rows) || rows.length === 0) {
         return new Set();
     }
 
     let maxValue = Number.NEGATIVE_INFINITY;
     rows.forEach(row => {
-        const value = row.values[valueIndex];
-        if (Number.isFinite(value) && value > maxValue) {
-            maxValue = value;
-        }
+        row.values.forEach((value, idx) => {
+            if (!isAnalysisValueEnabled(col, idx)) return;
+            if (Number.isFinite(value) && value > maxValue) {
+                maxValue = value;
+            }
+        });
     });
 
     if (!Number.isFinite(maxValue)) {
@@ -821,8 +963,12 @@ function getVariableSetFromRowsByAlpha(rows, valueIndex, alpha) {
     const vars = new Set();
 
     rows.forEach(row => {
-        const value = row.values[valueIndex];
-        if (!Number.isFinite(value) || value <= threshold) return;
+        const hasPassingValue = row.values.some((value, idx) => {
+            if (!isAnalysisValueEnabled(col, idx)) return false;
+            return Number.isFinite(value) && value > threshold;
+        });
+
+        if (!hasPassingValue) return;
         if (row.v1) vars.add(row.v1);
         if (row.v2) vars.add(row.v2);
     });
@@ -854,14 +1000,14 @@ function renderUniqueVariablesAnalysis() {
     }
 
     const perColumn = visibleColumns.map((col, idx) => {
-        const rows = Array.isArray(col.visibleRows) ? col.visibleRows : [];
+        const rows = getRowsForBasicAnalysis(col, Array.isArray(col.visibleRows) ? col.visibleRows : []);
         return {
             name: getColumnDisplayName(col, idx),
             vars: getVariableSetFromRows(rows, nRows)
         };
     });
 
-    let html = `<p class="analysis-meta">Using first ${nRows} visible rows per column (respecting each column's current sort and filters).</p>`;
+    let html = `<p class="analysis-meta">Using first ${nRows} visible rows per column with at least one analysis-enabled TC value (respecting each column's current sort and filters).</p>`;
     html += renderSetComparisonBlocks(perColumn);
     resultEl.innerHTML = html;
 }
@@ -890,15 +1036,14 @@ function renderAlphaVariablesAnalysis() {
     }
 
     const perColumn = visibleColumns.map((col, idx) => {
-        const rows = Array.isArray(col.visibleRows) ? col.visibleRows : [];
-        const tcValueIndex = getColumnTcValueIndex(col);
+        const rows = getRowsForBasicAnalysis(col, Array.isArray(col.visibleRows) ? col.visibleRows : []);
         return {
             name: getColumnDisplayName(col, idx),
-            vars: getVariableSetFromRowsByAlpha(rows, tcValueIndex, alpha)
+            vars: getVariableSetFromRowsByAlpha(col, rows, alpha)
         };
     });
 
-    let html = `<p class="analysis-meta">Using rows where TC value is greater than alpha times the per-column maximum TC value (alpha = ${alpha}).</p>`;
+    let html = `<p class="analysis-meta">Using rows where at least one analysis-enabled TC value is greater than alpha times the per-column maximum enabled TC value (alpha = ${alpha}).</p>`;
     html += renderSetComparisonBlocks(perColumn);
     resultEl.innerHTML = html;
 }
@@ -959,6 +1104,7 @@ function renderColumn(colId, suppressAnalysisRefresh = false) {
     let filteredEntries = [];
     const allRows = getCombinedRows(col);
     const maxAbsValues = new Array(col.selections.length).fill(0);
+    let longestValueLength = Math.max(4, ...col.selections.map((_, idx) => `TC ${idx + 1}`.length));
 
     allRows.forEach(item => {
         const is2D = item.v2 !== '';
@@ -976,13 +1122,16 @@ function renderColumn(colId, suppressAnalysisRefresh = false) {
             if (val === null || Number.isNaN(val)) return;
             const absVal = Math.abs(val);
             if (absVal > maxAbsValues[idx]) maxAbsValues[idx] = absVal;
+            longestValueLength = Math.max(longestValueLength, getScientificTextLength(val));
         });
 
         filteredEntries.push(item);
     });
 
     const longestVarLength = getLongestVariableLength(filteredEntries, showVar2);
-    renderColgroup(col, showVar2, longestVarLength);
+    const widths = computeTableWidths(col, showVar2, longestVarLength, longestValueLength);
+    applyColumnWidth(col.id, widths.totalWidth);
+    renderColgroup(col, showVar2, widths);
     renderTableHead(col, showVar2);
     updateSortIcons(col);
 
@@ -1043,6 +1192,8 @@ function renderColumn(colId, suppressAnalysisRefresh = false) {
         col.selections.forEach((_, idx) => {
             const tdValue = document.createElement('td');
             tdValue.className = 'value-cell td-interact value-col';
+            const isAnalysisEnabled = isAnalysisValueEnabled(col, idx);
+            tdValue.classList.toggle('analysis-col-disabled', !isAnalysisEnabled);
 
             const value = item.values[idx];
             if (value === null || Number.isNaN(value)) {
@@ -1161,7 +1312,8 @@ function generatePermalink() {
             selections: col.selections.map(sel => sel.path ?? null),
             sortCol: col.sortCol,
             sortDir: col.sortDir,
-            sortValIndex: col.sortValIndex
+            sortValIndex: col.sortValIndex,
+            disabledValueIndices: Array.from(col.analysisDisabledValueIndices ?? [])
         })),
         exclude: document.getElementById('exclude-input')?.value ?? '',
         dim: document.getElementById('dim-select')?.value ?? 'both',
