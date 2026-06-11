@@ -1340,3 +1340,484 @@ function generatePermalink() {
 window.addEventListener('resize', () => {
     renderAllColumns();
 });
+
+/**
+ * Standalone Tree-Integrated Wildcard & Granular Sync Manager (Self-Parsing & Synchronous)
+ */
+(function() {
+    let isUpdating = false;
+    let isTriggeringLoad = false;
+
+    // 1. Inject Styles with Flex Overrides
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .dropdown-content li > span,
+        .dropdown-content li.file-item {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            padding: 8px 14px !important;
+        }
+        .wildcard-controls-container {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            background: var(--bg-panel-alt);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .wildcard-level-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+        .wildcard-select {
+            padding: 3px 6px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 13px;
+            background: var(--bg-panel);
+            color: var(--text);
+            flex-grow: 1;
+            min-width: 0;
+        }
+        .syncCheckbox {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--button, #1d4ed8);
+            cursor: pointer;
+            margin: 0;
+            flex-shrink: 0;
+        }
+        .dropdown-tree-chk {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--button, #1d4ed8);
+            cursor: pointer;
+            margin: 0;
+            flex-shrink: 0;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Clean text nodes from folder markers
+    function getCleanText(node) {
+        const clone = node.cloneNode(true);
+        const injected = clone.querySelectorAll('.dropdown-tree-chk');
+        injected.forEach(el => el.remove());
+        return clone.textContent.replace(/[▸▾\s]+/g, '').trim();
+    }
+
+    // Determine exact folder depth (0-indexed)
+    function getLiDepth(li) {
+        let depth = 0;
+        let parent = li.parentElement.closest('ul');
+        while (parent) {
+            if (parent.parentElement.classList.contains('dropdown-content')) {
+                break;
+            }
+            depth++;
+            parent = parent.parentElement.closest('ul');
+        }
+        return depth;
+    }
+
+    // Reconstruct list item path
+    function getItemPath(item) {
+        const pathParts = [];
+        let current = item.closest('li');
+        while (current) {
+            const span = current.querySelector(':scope > span');
+            const text = span ? getCleanText(span) : getCleanText(current);
+            if (text) {
+                pathParts.unshift(text);
+            }
+            current = current.parentElement.closest('li');
+        }
+        return pathParts.join('/');
+    }
+
+    // Parse options directly from the global folderStructure object
+    function getOptionsAtDepth(structure, selectedPath) {
+        let current = structure || folderStructure;
+        for (let segment of selectedPath) {
+            if (current && typeof current === 'object' && segment in current) {
+                current = current[segment];
+            } else {
+                return null;
+            }
+        }
+        if (!current) return null;
+        const folders = Object.keys(current).filter(key => key !== 'files');
+        const files = current.files || [];
+        return { folders, files };
+    }
+
+    // Force native file loader
+    function triggerNativeFileLoad(colId, selectionId) {
+        const col = columns.find(c => c.id === colId);
+        if (!col) return;
+
+        const sel = col.selections.find(s => s.id === selectionId);
+        if (!sel || !sel._selectedPath) return;
+
+        const baseSegment = (folderStructure && !('data' in folderStructure)) ? 'data' : '';
+        const fullPath = baseSegment ? [baseSegment, ...sel._selectedPath].join('/') : sel._selectedPath.join('/');
+
+        isTriggeringLoad = true;
+        try {
+            loadSelectionFile(colId, selectionId, fullPath, true);
+        } finally {
+            isTriggeringLoad = false;
+        }
+    }
+
+    // Re-resolve active paths
+    function updateSubtreeSelections(sel, startIdx) {
+        for (let i = startIdx; i < sel._selectedPath.length; i++) {
+            const opts = getOptionsAtDepth(folderStructure, sel._selectedPath.slice(0, i));
+            if (!opts) break;
+
+            const available = opts.folders.length > 0 ? opts.folders : opts.files;
+            if (available && available.length > 0) {
+                const currentVal = sel._selectedPath[i];
+                if (!available.includes(currentVal)) {
+                    sel._selectedPath[i] = available[0];
+                }
+            }
+        }
+    }
+
+    // Sync changed paths ONLY if both target and source have this row's sync checkbox checked
+    function handleWildcardSelectChange(colId, selectionId, levelIdx, newValue) {
+        if (isUpdating) return;
+
+        const col = columns.find(c => c.id === colId);
+        if (!col) return;
+
+        const sel = col.selections.find(s => s.id === selectionId);
+        if (!sel) return;
+
+        sel._selectedPath[levelIdx] = newValue;
+        updateSubtreeSelections(sel, levelIdx + 1);
+
+        const syncCheckbox = document.getElementById('sync-columns-chk');
+        const globalSyncActive = syncCheckbox ? syncCheckbox.checked : false;
+
+        if (globalSyncActive && sel._checkedLevels && sel._checkedLevels[levelIdx]) {
+            isUpdating = true;
+            try {
+                columns.forEach(otherCol => {
+                    if (otherCol.id === colId) return;
+
+                    otherCol.selections.forEach(otherSel => {
+                        if (
+                            otherSel._wildcardEnabledLevels && otherSel._wildcardEnabledLevels[levelIdx] &&
+                            otherSel._checkedLevels && otherSel._checkedLevels[levelIdx] && 
+                            otherSel._selectedPath
+                        ) {
+                            otherSel._selectedPath[levelIdx] = newValue;
+                            updateSubtreeSelections(otherSel, levelIdx + 1);
+                            triggerNativeFileLoad(otherCol.id, otherSel.id);
+                        }
+                    });
+                });
+            } finally {
+                isUpdating = false;
+            }
+        }
+
+        updateAllWildcardControls();
+        triggerNativeFileLoad(colId, selectionId);
+    }
+
+    // Inject checkboxes into original dropdown elements
+    function injectTreeCheckboxes(colId, selectionId) {
+        const dropdown = document.getElementById(`dropdown-${colId}-${selectionId}`);
+        if (!dropdown) return;
+
+        const col = columns.find(c => c.id === colId);
+        if (!col) return;
+        const sel = col.selections.find(s => s.id === selectionId);
+        if (!sel) return;
+
+        if (!sel._wildcardEnabledLevels) sel._wildcardEnabledLevels = {};
+
+        const items = dropdown.querySelectorAll('li > span, li.file-item');
+        items.forEach(item => {
+            if (item.querySelector('.dropdown-tree-chk')) return;
+
+            const li = item.closest('li');
+            if (!li) return;
+
+            const depth = getLiDepth(li);
+
+            const chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.className = 'dropdown-tree-chk';
+            chk.checked = !!sel._wildcardEnabledLevels[depth];
+
+            chk.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sel._wildcardEnabledLevels[depth] = chk.checked;
+
+                // Unify sibling checks at this depth
+                const siblings = Array.from(dropdown.querySelectorAll('li')).filter(sib => getLiDepth(sib) === depth);
+                siblings.forEach(sib => {
+                    const sibChk = sib.querySelector('.dropdown-tree-chk');
+                    if (sibChk) sibChk.checked = chk.checked;
+                });
+
+                updateAllWildcardControls();
+                generatePermalink(); // Force permalink state serialization update
+            });
+
+            item.appendChild(chk);
+        });
+    }
+
+    // Get globally active level indices across entire dashboard
+    function getGloballyActiveLevels() {
+        const active = new Set();
+        columns.forEach(c => {
+            c.selections.forEach(s => {
+                if (s._wildcardEnabledLevels) {
+                    Object.entries(s._wildcardEnabledLevels).forEach(([lvl, isEnabled]) => {
+                        if (isEnabled) active.add(Number(lvl));
+                    });
+                }
+            });
+        });
+        return active;
+    }
+
+    // Global layout recalculation trigger
+    function updateAllWildcardControls() {
+        columns.forEach(col => {
+            col.selections.forEach(sel => {
+                renderWildcardControls(col.id, sel.id);
+            });
+        });
+    }
+
+    // Render selects inside .column-header.
+    function renderWildcardControls(colId, selectionId) {
+        const col = columns.find(c => c.id === colId);
+        if (!col) return;
+
+        const sel = col.selections.find(s => s.id === selectionId);
+        if (!sel || !sel._selectedPath) return;
+
+        const columnEl = document.getElementById(`col-${colId}`);
+        if (!columnEl) return;
+
+        const header = columnEl.querySelector('.column-header');
+        if (!header) return;
+
+        let container = header.querySelector(`.wildcard-controls-container-${selectionId}`);
+        if (!container) {
+            container = document.createElement('div');
+            container.className = `wildcard-controls-container wildcard-controls-container-${selectionId}`;
+            header.appendChild(container);
+        }
+
+        // Focus Preservation Hook
+        const activeEl = document.activeElement;
+        let focusedLevelIdx = null;
+        if (activeEl && activeEl.classList.contains('wildcard-select') && activeEl.closest(`.wildcard-controls-container-${selectionId}`)) {
+            focusedLevelIdx = Number(activeEl.getAttribute('data-level'));
+        }
+
+        container.innerHTML = '';
+
+        const globallyActiveLevels = getGloballyActiveLevels();
+        if (globallyActiveLevels.size === 0) {
+            container.style.display = 'none';
+            return;
+        }
+        container.style.display = 'flex';
+
+        sel._selectedPath.forEach((segment, levelIdx) => {
+            if (!globallyActiveLevels.has(levelIdx)) return;
+
+            const row = document.createElement('div');
+            row.className = 'wildcard-level-row';
+
+            if (!sel._wildcardEnabledLevels || !sel._wildcardEnabledLevels[levelIdx]) {
+                row.style.visibility = 'hidden';
+                row.style.height = '25px';
+                row.innerHTML = '&nbsp;';
+                container.appendChild(row);
+                return;
+            }
+
+            const select = document.createElement('select');
+            select.className = 'wildcard-select';
+            select.setAttribute('data-level', levelIdx);
+
+            const parentPath = sel._selectedPath.slice(0, levelIdx);
+            const opts = getOptionsAtDepth(folderStructure, parentPath);
+
+            if (opts) {
+                const pool = opts.folders.length > 0 ? opts.folders : opts.files;
+                pool.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.textContent = opt;
+                    select.appendChild(option);
+                });
+                select.value = segment;
+            }
+
+            select.addEventListener('change', () => {
+                handleWildcardSelectChange(colId, selectionId, levelIdx, select.value);
+            });
+
+            row.appendChild(select);
+
+            // Syncing checkbox
+            const syncChk = document.createElement('input');
+            syncChk.type = 'checkbox';
+            syncChk.className = 'syncCheckbox';
+
+            if (!sel._checkedLevels) sel._checkedLevels = {};
+            if (sel._checkedLevels[levelIdx] === undefined) sel._checkedLevels[levelIdx] = true;
+            syncChk.checked = !!sel._checkedLevels[levelIdx];
+
+            syncChk.addEventListener('change', () => {
+                sel._checkedLevels[levelIdx] = syncChk.checked;
+                generatePermalink(); // Force permalink state serialization update
+            });
+
+            row.appendChild(syncChk);
+
+            container.appendChild(row);
+        });
+
+        if (focusedLevelIdx !== null) {
+            const selectToFocus = container.querySelector(`.wildcard-select[data-level="${focusedLevelIdx}"]`);
+            if (selectToFocus) selectToFocus.focus();
+        }
+    }
+
+    function initSelectionWildcards(colId, selectionId, filePath) {
+        const col = columns.find(c => c.id === colId);
+        if (!col) return;
+
+        const sel = col.selections.find(s => s.id === selectionId);
+        if (!sel) return;
+
+        const segments = filePath.split('/');
+        const cleanSegments = (segments.length > 0 && segments[0].toLowerCase() === 'data' && folderStructure && !('data' in folderStructure))
+            ? segments.slice(1)
+            : segments;
+
+        sel._selectedPath = cleanSegments;
+
+        // Apply permalink restore state if cached in memory
+        const colIdx = columns.indexOf(col);
+        const selIdx = col.selections.indexOf(sel);
+        let cachedState = null;
+        if (colIdx !== -1 && selIdx !== -1 && restoredWildcardStates[colIdx]) {
+            cachedState = restoredWildcardStates[colIdx][selIdx];
+        }
+
+        if (cachedState) {
+            sel._wildcardEnabledLevels = cachedState.enabledLevels || {};
+            sel._checkedLevels = cachedState.checkedLevels || {};
+            // Consume cache row to prevent multiple overrides on subsequent actions
+            restoredWildcardStates[colIdx][selIdx] = null;
+        } else {
+            if (!sel._wildcardEnabledLevels) sel._wildcardEnabledLevels = {};
+            if (!sel._checkedLevels) sel._checkedLevels = {};
+        }
+
+        injectTreeCheckboxes(colId, selectionId);
+        renderWildcardControls(colId, selectionId);
+    }
+
+    // Intercept native toggle dropdown lexically
+    const originalToggleDropdown = toggleDropdown;
+    toggleDropdown = function(colId, selectionId) {
+        originalToggleDropdown(colId, selectionId);
+        injectTreeCheckboxes(colId, selectionId);
+    };
+
+    // Synchronous execution hooked to renderColumn. Executes exactly when the active file load completes.
+    const originalRenderColumn = renderColumn;
+    renderColumn = function(colId, suppressAnalysisRefresh) {
+        originalRenderColumn(colId, suppressAnalysisRefresh);
+
+        if (isTriggeringLoad) return;
+
+        const col = columns.find(c => c.id === colId);
+        if (!col) return;
+
+        col.selections.forEach(sel => {
+            if (sel.path) {
+                initSelectionWildcards(colId, sel.id, sel.path);
+            }
+        });
+    };
+
+    // 2. LEXICAL PERMALINK ENGINES INTERCEPTION
+
+    // Save State Hook: Redefine lexical generator to include wildcard selections
+    const originalGeneratePermalink = generatePermalink;
+    generatePermalink = function() {
+        originalGeneratePermalink(); // Run original to establish basic state params
+
+        const params = new URLSearchParams(window.location.search);
+        const stateParam = params.get('state');
+        if (!stateParam) return;
+
+        try {
+            const state = JSON.parse(stateParam);
+            if (state && Array.isArray(state.columns)) {
+                // Populate parallel properties alongside column definitions
+                state.columns.forEach((colConfig, colIdx) => {
+                    const nativeCol = columns[colIdx];
+                    if (nativeCol) {
+                        colConfig.wildcardStates = nativeCol.selections.map(sel => ({
+                            enabledLevels: sel._wildcardEnabledLevels || {},
+                            checkedLevels: sel._checkedLevels || {}
+                        }));
+                    }
+                });
+
+                params.set('state', JSON.stringify(state));
+                const query = params.toString();
+                const permalink = query ? `${location.pathname}?${query}` : location.pathname;
+                window.history.replaceState({}, '', permalink);
+            }
+        } catch (e) {
+            console.error("Wildcard permalink serialization failed:", e);
+        }
+    };
+
+    // Self-Parsing URL context resolver (100% decoupled from async lifecycle)
+    function parseWildcardStatesFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const stateParam = params.get('state');
+        if (stateParam) {
+            try {
+                const state = JSON.parse(stateParam);
+                if (state && Array.isArray(state.columns)) {
+                    return state.columns.map(col => col.wildcardStates || []);
+                }
+            } catch (e) {
+                console.error("Failed to parse wildcard states from URL:", e);
+            }
+        }
+        return [];
+    }
+
+    let restoredWildcardStates = parseWildcardStatesFromUrl();
+})();
